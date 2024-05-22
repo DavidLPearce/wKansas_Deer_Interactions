@@ -3,7 +3,7 @@
 
 library(dplyr)
 library(lubridate)
-
+library(unmarked)
 
 
 # Reading in data
@@ -134,8 +134,13 @@ for (site in 1:length(unique(md_dat$New_SiteID))){
 print(md_det_mat)
 
 
+# Creating a list for the det matrices
+ylist <- list(Whitetail_deer = wtd_det_mat, mule_deer = md_det_mat)
+
 
 ## ------------------ Covariates -------------------------------------
+
+# detection covariates --------------
 
 doy_cov_dat <- read.csv("./KansasCamera_doy.csv")
 
@@ -158,15 +163,86 @@ doy_cov$Stack_ID <- paste(doy_cov$Site, doy_cov$Survey, sep = ".")
 
 
 # merging new site ID by Stack_ID
-merge_dat <- merge(ks_dat, doy_cov, by.x = "Stack_ID", by.y = "Stack_ID")
+doy_merge_dat <- merge(ks_dat, doy_cov, by.x = "Stack_ID", by.y = "Stack_ID")
 
 
 # Extracting unique instances of Stack_ID with corresponding Latitude, Longitude, and DaysActive
-unique_data <- merge_dat %>%
-  distinct(Stack_ID, Latitude.x, Longitude.x, DaysActive) %>%
+doy_unique_data <- doy_merge_dat %>%
+  distinct(Stack_ID,Site.x, Latitude.x, Longitude.x, DaysActive) %>%
   arrange(Stack_ID)
 
 
+# reading in vegetation data
+veg_cov <- read.csv("./KansasCamera_cov.csv")
+
+# Sort by site and then by date
+ordered_indices <- order(veg_cov$Site, veg_cov$SurveyYear)
+
+# reorder  data frame
+veg_cov <- veg_cov[ordered_indices, ]
+
+
+# Adding a column based on year for survey 
+veg_cov$Survey <- ifelse(veg_cov$SurveyYear == "2018", 1,
+                         ifelse(veg_cov$SurveyYear == "2019", 2, 
+                                ifelse(veg_cov$SurveyYear == "2020", 3, NA)))
+
+
+# Creating a stacked site column
+veg_cov$Stack_ID <- paste(veg_cov$Site, veg_cov$Survey, sep = ".")
+
+# merging new site ID by Stack_ID
+veg_merge_dat <- merge(ks_dat, veg_cov, by.x = "Stack_ID", by.y = "Stack_ID")
+
+# Extracting unique instances of Stack_ID with corresponding Latitude, Longitude, and DaysActive
+veg_unique_data <- veg_merge_dat %>%
+  select(Stack_ID,Site.x, VegHeight) %>%
+  distinct() %>%
+  arrange(Stack_ID)
+
+# Merging doy cov and veg cov into a single dataframe for detection
+# merging new site ID by Stack_ID
+det_cov <- merge(doy_unique_data, veg_unique_data, by.x = "Stack_ID", by.y = "Stack_ID")
+
+# renaming site, lat, long, and removing site.x.y
+names(det_cov)[2] <- "Site"
+names(det_cov)[3] <- "Latitude"
+names(det_cov)[4] <- "Longitude"
+det_cov <- det_cov[,-6]
 
 
 
+# occupancy covariates -------------- 
+
+landscape_cov_dat <- read.csv("./occu_cov_2650.csv")
+
+# combining landscape_cov_dat with det_cov 
+site_covs <- merge(landscape_cov_dat, det_cov, by.x = "Site", by.y = "Site")
+
+# checking length
+NROW(site_covs)
+
+
+## ------------------ Unmarked frame -------------------------------------
+
+# creating an unmarked frame
+
+deer_umf <- unmarkedFrameOccuMulti(y = ylist, 
+                                   siteCovs = site_covs)
+                                   
+
+# detection model ------------------------
+
+# null model
+fit1 <- occuMulti(data = deer_umf,
+                  detformulas = c("~1","~1"),
+                  stateformulas = c("~1","~1","~1") 
+                  )
+
+# days active 
+fit2 <- occuMulti(data = deer_umf,
+                  detformulas = c("~DaysActive", "~DaysActive"),
+                  stateformulas = c("~1","~1","~1") 
+)
+
+deer_umf@siteCovs
