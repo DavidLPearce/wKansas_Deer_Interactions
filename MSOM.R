@@ -137,7 +137,7 @@ print(md_det_mat)
 
 ## ------------------ Covariates -------------------------------------
 
-doy_cov <- read.csv("./KansasCamera_doy.csv")
+doy_cov_dat <- read.csv("./KansasCamera_doy.csv")
 
 # Sort by site and then by date
 ordered_indices <- order(doy_cov$Site, doy_cov$Year)
@@ -161,8 +161,10 @@ doy_cov$Stack_ID <- paste(doy_cov$Site, doy_cov$Survey, sep = ".")
 merge_dat <- merge(ks_dat, doy_cov, by.x = "Stack_ID", by.y = "Stack_ID")
 
 
-View(merge_dat)
-
+# Extracting unique instances of Stack_ID with corresponding Latitude, Longitude, and DaysActive
+unique_data <- merge_dat %>%
+  distinct(Stack_ID, Latitude.x, Longitude.x, DaysActive) %>%
+  arrange(Stack_ID)
 
 
 
