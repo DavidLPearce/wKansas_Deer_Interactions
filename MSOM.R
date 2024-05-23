@@ -1,10 +1,13 @@
 
+install.packages("wiqid")
 
 library(ggplot2)
 library(dplyr)
 library(lubridate)
 library(unmarked)
 library(AICcmodavg)
+
+setseed(123)
 
 
 # Reading in data
@@ -238,9 +241,14 @@ distance_covs <- read.csv("./distance_covs.csv")
 # combining landscape_cov_dat with det_cov 
 site_covs <- merge(site_covs, distance_covs, by.x = "Site", by.y = "Site")
 
+# creating a proportion summary of grasslands
+site_covs$prpGrassland <- site_covs$PasturePrp + site_covs$CRPPrp + site_covs$SGPPrp + site_covs$MGPPrp + site_covs$TGPPrp
 
-
-## ------------------ Unmarked frame -------------------------------------
+# -------------------------------------------------------
+#
+#                     Unmarked frame 
+#
+# -------------------------------------------------------
 
 # creating an unmarked frame
 
@@ -248,10 +256,14 @@ deer_umf <- unmarkedFrameOccuMulti(y = ylist,
                                    siteCovs = site_covs)
                                    
 
-# detection model ------------------------
+# -------------------------------------------------------
+#
+#               White-tail Detection Model 
+#
+# -------------------------------------------------------
 
 # null model
-fit1 <- occuMulti(data = deer_umf,
+wtd_detfit1 <- occuMulti(data = deer_umf,
                   detformulas = c("~1",
                                   "~1"),
                   stateformulas = c("~1",
@@ -260,109 +272,47 @@ fit1 <- occuMulti(data = deer_umf,
 )
 
 # days active 
-fit2 <- occuMulti(data = deer_umf,
+wtd_detfit2 <- occuMulti(data = deer_umf,
                   detformulas = c("~scale(DaysActive)", 
-                                  "~scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~1",
-                                    "~1") 
-)
-
-# latitude 
-fit3 <- occuMulti(data = deer_umf,
-                  detformulas = c("~Latitude", 
-                                  "~Latitude"),
-                  stateformulas = c("~1",
-                                    "~1",
-                                    "~1") 
-)
-
-# longitude 
-fit4 <- occuMulti(data = deer_umf,
-                  detformulas = c("~Longitude", 
-                                  "~Longitude"),
+                                  "~1"),
                   stateformulas = c("~1",
                                     "~1",
                                     "~1") 
 )
 
 
-# DaysActive + longitude
-fit5 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(DaysActive) + Longitude", 
-                                  "~ scale(DaysActive) + Longitude"),
-                  stateformulas = c("~1",
-                                    "~1",
-                                    "~1") 
-)
-
-# DaysActive + latitude
-fit6 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(DaysActive) + Latitude", 
-                                  "~ scale(DaysActive) + Latitude"),
-                  stateformulas = c("~1",
-                                    "~1",
-                                    "~1") 
-)
-
-# DaysActive + latitude + longitude
-fit7 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(DaysActive) + Latitude + Longitude", 
-                                  "~ DaysActive + Latitude + Longitude"),
-                  stateformulas = c("~1",
-                                    "~1",
-                                    "~1") 
-)
 
 # MajorRoadDis
-fit8 <- occuMulti(data = deer_umf,
+wtd_detfit3 <- occuMulti(data = deer_umf,
                   detformulas = c("~ scale(MajorRoadDist)", 
-                                  "~ scale(MajorRoadDist)"),
+                                  "~ 1"),
                   stateformulas = c("~1",
                                     "~1",
                                     "~1") 
 )
 
 # TownsDist
-fit9 <- occuMulti(data = deer_umf,
+wtd_detfit4 <- occuMulti(data = deer_umf,
                   detformulas = c("~ scale(TownsDist)", 
-                                  "~ scale(TownsDist)"),
+                                  "~ 1"),
                   stateformulas = c("~1",
                                     "~1",
                                     "~1") 
 )
 
 # TownsDist + MajorRoadDis
-fit10 <- occuMulti(data = deer_umf,
+wtd_detfit5 <- occuMulti(data = deer_umf,
                   detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                  "~ 1"),
                   stateformulas = c("~1",
                                     "~1",
                                     "~1") 
 )
 
 # TownsDist + MajorRoadDis + DaysActive
-fit11 <- occuMulti(data = deer_umf,
+wtd_detfit6 <- occuMulti(data = deer_umf,
                    detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + scale(DaysActive)", 
-                                   "~ scale(TownsDist) + scale(MajorRoadDist) + scale(DaysActive)"),
-                   stateformulas = c("~1",
-                                     "~1",
-                                     "~1") 
-)
-
-# TownsDist + MajorRoadDis + Longitude
-fit12 <- occuMulti(data = deer_umf,
-                   detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude", 
-                                   "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude"),
-                   stateformulas = c("~1",
-                                     "~1",
-                                     "~1") 
-)
-
-# TownsDist + MajorRoadDis + Longitude + DaysActive
-fit13 <- occuMulti(data = deer_umf,
-                   detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                   "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
+                                   "~ 1"),
                    stateformulas = c("~1",
                                      "~1",
                                      "~1") 
@@ -370,104 +320,793 @@ fit13 <- occuMulti(data = deer_umf,
 
 
 # Creating a list of model names
-model_names <- paste("Fit", as.character(1:13), sep = "")
+wtdDET_model_names <- paste("wtd_detFit", as.character(1:6), sep = "")
 
 # Calculating AIC for the list of models
-model_aicc <- aictab(list(fit1,fit2,fit3,fit4,fit5,
-                          fit6,fit7,fit8,fit9,fit10,fit11,fit12,fit13), modnames = model_names)
+wtd_det_model_aicc <- aictab(list(wtd_detfit1, wtd_detfit2, wtd_detfit3, wtd_detfit4, wtd_detfit5,
+                          wtd_detfit6), 
+                     modnames = wtdDET_model_names)
 
-print(model_aicc)
+print(wtd_det_model_aicc)
+
+# Fit 2 was the most supported detection model for whitetail deer
+
+# -------------------------------------------------------
+#
+#               Mule Deer Detection Model 
+#
+# -------------------------------------------------------
+
+# null model
+md_detfit1 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1",
+                                         "~1"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
+
+# days active 
+md_detfit2 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1", 
+                                         "~ scale(DaysActive)"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
 
 
-# occupancy model ------------------------
 
-# detection model fit 13 was the most supported 
+# MajorRoadDis
+md_detfit3 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1 ", 
+                                         "~ scale(MajorRoadDist)"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
 
-# Null model
-fit1 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
+# TownsDist
+md_detfit4 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1 ", 
+                                         "~ scale(TownsDist)"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
+
+# TownsDist + MajorRoadDis
+md_detfit5 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1 ", 
+                                         "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
+
+# TownsDist + MajorRoadDis + DaysActive
+md_detfit6 <- occuMulti(data = deer_umf,
+                         detformulas = c("~1", 
+                                         "~ scale(TownsDist) + scale(MajorRoadDist) + scale(DaysActive)"),
+                         stateformulas = c("~1",
+                                           "~1",
+                                           "~1") 
+)
+
+
+# Creating a list of model names
+md_det_model_names <- paste("detFit", as.character(1:6), sep = "")
+
+# Calculating AIC for the list of models
+md_det_model_aicc <- aictab(list(md_detfit1, md_detfit2, md_detfit3, md_detfit4, md_detfit5,
+                          md_detfit6), 
+                     modnames = md_det_model_names)
+
+print(md_det_model_aicc)
+
+# Fit 5  was the most supported for mule deer detection
+
+# -------------------------------------------------------
+#
+#             Cumulative Detection Probability 
+#
+# -------------------------------------------------------
+
+# now that the covariates that are strongly associated for each species are found
+# we can look at the cumulative detection probability for each species to decide how many
+# survey occasions we should have
+
+# Best detection model for both species
+det_fit <- occuMulti(data = deer_umf,
+                     detformulas = c("~ scale(DaysActive)", 
+                                     "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                     stateformulas = c("~1",
+                                       "~1",
+                                       "~1"))
+
+
+# Creating a new data frame with detection covariates
+View(site_covs)
+newdata <- site_covs[,c(70 , 77:78)]
+
+
+# Predicting detection using best detection model
+# Whitetail deer
+daily_p_wtd <- predict(det_fit, type = "det", species = "Whitetail_deer", newdata = newdata)
+
+# Mule deer
+daily_p_md <- predict(det_fit, type = "det", species = "mule_deer", newdata = newdata)
+
+# Extract the predicted probabilities
+p_det_wtd <- daily_p_wtd$Predicted
+p_det_md <- daily_p_md$Predicted
+
+# Number of survey days
+n_days <- 28
+
+# Calculate cumulative detection probability over 28 days
+# Cumulative detection probability for a single species over n days is:
+# P_cumulative = 1 - (1 - p)^n_days
+cumulative_p_wtd <- 1 - cumprod(1 - p_det_wtd[1:n_days])
+cumulative_p_md <- 1 - cumprod(1 - p_det_md[1:n_days])
+
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Day = 1:n_days,
+  Cumulative_wTD = cumulative_p_wtd,
+  Cumulative_MD = cumulative_p_md
+)
+
+
+# Plot the cumulative detection probabilities
+ggplot(plot_data, aes(x = Day)) +
+  geom_line(aes(y = Cumulative_wTD, color = "Whitetail Deer"), size = 1) +
+  geom_line(aes(y = Cumulative_MD, color = "Mule Deer"), size = 1) +
+  labs(y = "Cumulative Detection Probability", title = "") +
+  scale_color_manual(name = "Legend", values = c("Whitetail Deer" = "purple", "Mule Deer" = "orange")) +
+  scale_x_continuous(breaks = 1:n_days) + 
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_rect(fill = "white", color = NA), 
+    plot.background = element_rect(fill = "white", color = NA) 
+  )
+
+# -------------------------------------------------------
+#
+#             Adjusting detection matrix 
+#
+# -------------------------------------------------------
+
+# can see from the cumulative detection probability plot that the detection propability
+# asymptotes at 28 days for whitetail and (almost) mule deer
+
+# creating a matrix of 1 survey occasion
+
+
+# Collapsing the detection matrix to 1 column and filling 1/0 if spp was detected within the 28 days
+wtd_det_mat_1occ  <- as.matrix(apply(wtd_det_mat, 1, function(x) as.integer(any(x == 1))))
+md_det_mat_1occ  <- as.matrix(apply(md_det_mat, 1, function(x) as.integer(any(x == 1))))
+
+# creating new list
+ylist_1survey <- list(Whitetail_deer = wtd_det_mat_1occ, mule_deer = md_det_mat_1occ)
+
+# Creating new unmarked frame
+deer1occ_umf <- unmarkedFrameOccuMulti(y = newylist, 
+                                   siteCovs = site_covs)
+
+# 
+# # Function to summarize data for every 14 days
+# summarize_14_days <- function(matrix_data) {
+#   num_days <- ncol(matrix_data)
+#   num_intervals <- ceiling(num_days / 14)
+#   
+#   summarized_matrix <- matrix(0, nrow = nrow(matrix_data), ncol = num_intervals)
+#   
+#   for (i in 1:num_intervals) {
+#     start_index <- (i - 1) * 14 + 1
+#     end_index <- min(i * 14, num_days)
+#     
+#     # Check if there is any 1 in the 14-day interval
+#     summarized_matrix[, i] <- apply(matrix_data[, start_index:end_index], 1, any)
+#   }
+#   
+#   return(summarized_matrix)
+# }
+# 
+# # Call the function to summarize the data
+# wtd_det_mat_14days <- summarize_14_days(wtd_det_mat)
+# md_det_mat_14days <- summarize_14_days(md_det_mat)
+# 
+# # creating new list
+# ylist_2surveys <- list(Whitetail_deer = wtd_det_mat_14days, mule_deer = md_det_mat_14days)
+# 
+# deer2occ_umf <- unmarkedFrameOccuMulti(y = ylist_2surveys, 
+#                                        siteCovs = site_covs)
+# 
+
+
+# -------------------------------------------------------
+#
+#      Whitetail Deer Detection Model 1 survey occasion
+#
+# -------------------------------------------------------
+
+
+# null model
+wtd_1oc_detfit1 <- occuMulti(data = deer1occ_umf,
+                  detformulas = c("~1",
+                                  "~1"),
+                  stateformulas = c("~1",
+                                    "~1",
+                                    "~1") 
+)
+
+# days active 
+wtd_1oc_detfit2 <- occuMulti(data = deer1occ_umf,
+                  detformulas = c("~scale(DaysActive)", 
+                                  "~1"),
                   stateformulas = c("~1",
                                     "~1",
                                     "~1") 
 )
 
 
-# Longitude
-fit2 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
+
+# MajorRoadDis
+wtd_1oc_detfit3 <- occuMulti(data = deer1occ_umf,
+                  detformulas = c("~ scale(MajorRoadDist)", 
+                                  "~ 1"),
                   stateformulas = c("~1",
-                                    "~Longitude",
-                                    "~Longitude") 
+                                    "~1",
+                                    "~1") 
+)
+
+# TownsDist
+wtd_1oc_detfit4 <- occuMulti(data = deer1occ_umf,
+                  detformulas = c("~ scale(TownsDist)", 
+                                  "~ 1"),
+                  stateformulas = c("~1",
+                                    "~1",
+                                    "~1") 
+)
+
+# TownsDist + MajorRoadDis
+wtd_1oc_detfit5 <- occuMulti(data = deer1occ_umf,
+                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist)", 
+                                  "~ 1"),
+                  stateformulas = c("~1",
+                                    "~1",
+                                    "~1") 
+)
+
+# TownsDist + MajorRoadDis + DaysActive
+wtd_1oc_detfit6 <- occuMulti(data = deer1occ_umf,
+                   detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + scale(DaysActive)", 
+                                   "~ 1"),
+                   stateformulas = c("~1",
+                                     "~1",
+                                     "~1") 
 )
 
 
-# RowcropPrp
-fit3 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(RowcropPrp)",
-                                    "~scale(RowcropPrp)") 
+
+# Creating a list of model names
+wtd_1oc_DET_model_names <- paste("wtd_1oc_detFit", as.character(1:5), sep = "")
+
+# Calculating AIC for the list of models
+wtd_1oc_det_model_aicc <- aictab(list(wtd_1oc_detfit1, wtd_1oc_detfit2, wtd_1oc_detfit3, 
+                                      wtd_1oc_detfit4, wtd_1oc_detfit5, wtd_1oc_detfit6),
+                             modnames = wtd_1oc_DET_model_names)
+
+print(wtd_1oc_det_model_aicc)
+
+# Can see that fit 6 has the lowest AIC but fit 2 is the most parsimonious model
+# will use fit 2 for whitetail detection
+
+# -------------------------------------------------------
+#
+#               Mule Deer Detection Model 
+#
+# -------------------------------------------------------
+
+
+# null model
+md_1oc_detfit1 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~1",
+                                             "~1"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
+)
+
+# days active 
+md_1oc_detfit2 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~1", 
+                                             "~scale(DaysActive)"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
 )
 
 
 
-# ForestPrp
-fit4 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(ForestPrp)",
-                                    "~scale(ForestPrp)") 
+# MajorRoadDis
+md_1oc_detfit3 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~1", 
+                                             "~ scale(MajorRoadDist)"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
 )
 
-# ShrublandPrp + ForestPrp
-fit5 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(ShrublandPrp)",
-                                    "~scale(ShrublandPrp)") 
+# TownsDist
+md_1oc_detfit4 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~1 ", 
+                                             "~scale(TownsDist)"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
 )
 
-# ShrublandPrp + ForestPrp
-fit6 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(ShrublandPrp) + scale(ForestPrp)",
-                                    "~scale(ShrublandPrp) + scale(ForestPrp)") 
+# TownsDist + MajorRoadDis
+md_1oc_detfit5 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~ 1 ", 
+                                             "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
 )
 
-# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
-fit7 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
-                                    "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)") 
-)
-
-
-# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
-fit7 <- occuMulti(data = deer_umf,
-                  detformulas = c("~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)", 
-                                  "~ scale(TownsDist) + scale(MajorRoadDist) + Longitude + scale(DaysActive)"),
-                  stateformulas = c("~1",
-                                    "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
-                                    "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)") 
+# TownsDist + MajorRoadDis + DaysActive
+md_1oc_detfit6 <- occuMulti(data = deer1occ_umf,
+                             detformulas = c("~ 1", 
+                                             "~ scale(TownsDist) + scale(MajorRoadDist) + scale(DaysActive)"),
+                             stateformulas = c("~1",
+                                               "~1",
+                                               "~1") 
 )
 
 
 
 
 # Creating a list of model names
-model_names <- paste("Fit", as.character(1:7), sep = "")
+md_1oc_det_model_names <- paste("detFit", as.character(1:6), sep = "")
 
 # Calculating AIC for the list of models
-model_aicc <- aictab(list(fit1,fit2,fit3,fit4,fit5,fit6,fit7), modnames = model_names)
+md_1oc_det_model_aicc <- aictab(list(md_detfit1, md_detfit2, md_detfit3, 
+                                      md_detfit4, md_detfit5, md_detfit6), 
+                            modnames = md_1oc_det_model_names)
 
-print(model_aicc)
+print(md_1oc_det_model_aicc)
+
+# Fit 5 was the best model for detecting mule deer
+
+
+# -------------------------------------------------------
+#
+#               Whitetail Deer Occupancy Model 
+#
+# -------------------------------------------------------
+
+
+# detection model fit 7 was the most supported: scale(DaysActive) + Latitude + Longitude
+
+# Null model
+wtd_1occ_occu_fit1 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~1",
+                                            "~1",
+                                            "~1") 
+)
+
+
+# RowcropPrp
+wtd_1occ_occu_fit2 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(RowcropPrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# SandsagePrp
+wtd_1occ_occu_fit3 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(SandsagePrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+
+# ForestPrp
+wtd_1occ_occu_fit4 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(ForestPrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# ShrublandPrp 
+wtd_1occ_occu_fit5 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(ShrublandPrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# ShrublandPrp + ForestPrp
+wtd_1occ_occu_fit6 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# ShrublandPrp + SandsagePrp
+wtd_1occ_occu_fit7 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(ShrublandPrp) + scale(SandsagePrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# SandsagePrp + ForestPrp
+wtd_1occ_occu_fit8 <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(SandsagePrp) + scale(ForestPrp)",
+                                            "~1",
+                                            "~1") 
+)
+
+# ShrublandPrp + ForestPrp + SandsagePrp
+wtd_1occ_occu_fit9 <- occuMulti(data = deer1occ_umf,
+                           detformulas = c("~ scale(DaysActive)", 
+                                           "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                           stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + scale(SandsagePrp)",
+                                             "~1",
+                                             "~1") 
+)
+
+
+
+# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
+wtd_1occ_occu_fit10 <- occuMulti(data = deer1occ_umf,
+                           detformulas = c("~ scale(DaysActive)", 
+                                           "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                           stateformulas = c("~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
+                                             "~1",
+                                             "~1") 
+)
+
+# prpGrassland
+wtd_1occ_occu_fit11 <- occuMulti(data = deer1occ_umf,
+                           detformulas = c("~ scale(DaysActive)", 
+                                           "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                           stateformulas = c("~scale(prpGrassland)",
+                                             "~1",
+                                             "~1") 
+)
+
+
+
+# Creating a list of model names
+wtd_1occ_occu_model_names <- paste("wtd_1occ_occu_Fit", as.character(1:11), sep = "")
+
+# Calculating AIC for the list of models
+wtd_1occ_occu_model_aicc <- aictab(list(wtd_1occ_occu_fit1,wtd_1occ_occu_fit2,wtd_1occ_occu_fit3,
+                                        wtd_1occ_occu_fit4,wtd_1occ_occu_fit5,wtd_1occ_occu_fit6,
+                                        wtd_1occ_occu_fit7,wtd_1occ_occu_fit8, wtd_1occ_occu_fit9,
+                                        wtd_1occ_occu_fit10, wtd_1occ_occu_fit11),
+                              modnames = wtd_1occ_occu_model_names)
+
+print(wtd_1occ_occu_model_aicc)
+
+# Fit 4 scale(ForestPrp) was the most supported occupancy model for white tail deer
+
+# -------------------------------------------------------
+#
+#               Mule Deer Occupancy Model 
+#
+# -------------------------------------------------------
+
+
+
+# Null model
+md_1occ_occu_fit1 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
+# RowcropPrp
+md_1occ_occu_fit2 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(RowcropPrp)",
+                                                  "~1") 
+)
+
+# SandsagePrp
+md_1occ_occu_fit3 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(SandsagePrp)",
+                                                  "~1") 
+)
+
+
+# ForestPrp
+md_1occ_occu_fit4 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ForestPrp)",
+                                                  "~1") 
+)
+
+# ShrublandPrp 
+md_1occ_occu_fit5 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp)",
+                                                  "~1") 
+)
+
+# ShrublandPrp + ForestPrp
+md_1occ_occu_fit6 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp) + scale(ForestPrp)",
+                                                  "~1") 
+)
+
+# ShrublandPrp + SandsagePrp
+md_1occ_occu_fit7 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp) + scale(SandsagePrp)",
+                                                  "~1") 
+)
+
+# SandsagePrp + ForestPrp
+md_1occ_occu_fit8 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(SandsagePrp) + scale(ForestPrp)",
+                                                  "~1") 
+)
+
+# ShrublandPrp + ForestPrp + SandsagePrp
+md_1occ_occu_fit9 <- occuMulti(data = deer1occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp) + scale(ForestPrp) + scale(SandsagePrp)",
+                                                  "~1") 
+)
+
+
+
+# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
+md_1occ_occu_fit10 <- occuMulti(data = deer1occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
+                                                   "~1") 
+)
+
+# prpGrassland
+md_1occ_occu_fit11 <- occuMulti(data = deer1occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(prpGrassland)",
+                                                   "~1") 
+)
+
+
+# Creating a list of model names
+md_1occ_occu_model_names <- paste("md_1occ_occu_Fit", as.character(1:11), sep = "")
+
+# Calculating AIC for the list of models
+md_1occ_occu_model_aicc <- aictab(list(md_1occ_occu_fit1, md_1occ_occu_fit2, md_1occ_occu_fit3,
+                                       md_1occ_occu_fit4, md_1occ_occu_fit5, md_1occ_occu_fit6, 
+                                       md_1occ_occu_fit7, md_1occ_occu_fit8, md_1occ_occu_fit9,
+                                       md_1occ_occu_fit10, md_1occ_occu_fit11),
+                              modnames = md_1occ_occu_model_names)
+
+print(md_1occ_occu_model_aicc)
+
+# fit 5 scale(ShrublandPrp) was the best occupancy model for mule deer
+# with the second most supported being fit 6 scale(ShrublandPrp) + scale(ForestPrp)
+
+# -------------------------------------------------------
+#
+#               Best Occupancy model
+#
+# -------------------------------------------------------
+
+# fitting a occupancy model that was the 'best' for both species
+occu_fit <- occuMulti(data = deer1occ_umf,
+                          detformulas = c("~ scale(DaysActive)", 
+                                          "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                          stateformulas = c("~scale(ForestPrp)",
+                                            "~scale(ShrublandPrp)",
+                                            "~1")) 
+
+# -------------------------------------------------------
+#
+#               Conditional Occupancy Plots 
+#
+# -------------------------------------------------------
+
+### species presence/absence
+
+# wtd
+wtd_md <- predict(occu_fit, type="state", species="Whitetail_deer", cond="mule_deer")
+wtd_no_md <- predict(occu_fit, type="state", species="Whitetail_deer", cond="-mule_deer")
+
+wtd_cond_data <- rbind(wtd_md[1,], wtd_no_md[1,])
+wtd_cond_data$md_status <- c("Present","Absent")
+
+
+plot(1:2, wtd_cond_data$Predicted, ylim=c(0,1), 
+     xlim=c(0.5, 2.5), pch=19, cex=1.5, xaxt='n', 
+     xlab="Mule Deer status", ylab="Whitetail occupancy and 95% CI")
+axis(1, at=1:2, labels=wtd_cond_data$md_status)
+
+# CIs
+top <- 0.1
+for (i in 1:2){
+  segments(i, wtd_cond_data$lower[i], i, wtd_cond_data$upper[i])
+  segments(i-top, wtd_cond_data$lower[i], i+top)
+  segments(i-top, wtd_cond_data$upper[i], i+top)
+}
+
+
+
+# md
+md_wtd <- predict(occu_fit, type="state", species="mule_deer", cond="Whitetail_deer")
+md_no_wtd <- predict(occu_fit, type="state", species="mule_deer", cond="-Whitetail_deer")
+
+md_cond_data <- rbind(md_wtd[1,], md_no_wtd[1,])
+md_cond_data$wtd_status <- c("Present","Absent")
+
+
+plot(1:2, md_cond_data$Predicted, ylim=c(0,0.5), 
+     xlim=c(0.5, 2.5), pch=19, cex=1.5, xaxt='n', 
+     xlab="Whitetail Deer status", ylab="Mule Deer occupancy and 95% CI")
+axis(1, at=1:2, labels=md_cond_data$wtd_status)
+
+# CIs
+top <- 0.1
+for (i in 1:2){
+  segments(i, md_cond_data$lower[i], i, md_cond_data$upper[i])
+  segments(i-top, md_cond_data$lower[i], i+top)
+  segments(i-top, md_cond_data$upper[i], i+top)
+}
+
+# -------------------------------------------------------
+#
+#               Marginal Occupancy Plots 
+#                 i.e., habitat
+#
+# -------------------------------------------------------
+
+
+### proportion forest
+
+# Getting the range of the prpForest covariate and creating a sequence along that 
+# range for occupancy probability
+prpforest_range <- range(siteCovs(deer1occ_umf)$ForestPrp)
+prpforests_seq <- seq(prpforest_range[1], prpforest_range[2], length.out=100)
+prpForest_df <- data.frame(ForestPrp = prpforests_seq)
+
+# occupancy model with just whitetail deer
+forest_occu <- occuMulti(data = deer1occ_umf,
+                            detformulas = c("~ scale(DaysActive)", 
+                                            "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                            stateformulas = c("~scale(ForestPrp)",
+                                              "~scale(ForestPrp)",
+                                              "~1")
+) 
+
+# white tail deer
+occ_prpForest_wtd <- predict(forest_occu, type="state", 
+                             species="Whitetail_deer", newdata = prpForest_df)
+
+
+occ_prpForest_wtd$Species <- "Whitetail deer"
+occ_prpForest_wtd$prpForest <- prpforests_seq
+head(occ_prpForest_wtd)
+
+# mule deer
+occ_prpForest_md <- predict(forest_occu, type="state", 
+                             species="mule_deer", newdata = prpForest_df)
+
+
+occ_prpForest_md$Species <- "Mule Deer"
+occ_prpForest_md$prpForest <- prpforests_seq
+head(occ_prpForest_md)
+
+
+
+# Plotting marginal occupancy in proportion forest
+plot(occ_prpForest_wtd$prpForest, occ_prpForest_wtd$Predicted, type='l', ylim=c(0,1),
+     col='purple', lwd=2, xlab="Proportion Forest", ylab="Marginal occupancy")
+
+lines(occ_prpForest_md$prpForest, occ_prpForest_md$Predicted, col='orange', lwd=2)
+
+legend('topleft', col=c('purple', 'orange'), lty=1,
+       legend=c("Whitetail deer", "Mule Deer"))
+
+
+
+
+
+### proportion ShrublandPrp
+
+# Getting the range of the prpForest covariate and creating a sequence along that 
+# range for occupancy probability
+ShrublandPrp_range <- range(siteCovs(deer1occ_umf)$ShrublandPrp)
+ShrublandPrp_seq <- seq(ShrublandPrp_range[1], ShrublandPrp_range[2], length.out=100)
+ShrublandPrp_df <- data.frame(ShrublandPrp = ShrublandPrp_seq)
+
+# occupancy model with just whitetail deer
+shrubland_occu <- occuMulti(data = deer1occ_umf,
+                         detformulas = c("~ scale(DaysActive)", 
+                                         "~ scale(TownsDist) + scale(MajorRoadDist)"),
+                         stateformulas = c("~scale(ShrublandPrp)",
+                                           "~scale(ShrublandPrp)",
+                                           "~1")
+) 
+
+# white tail deer
+occ_prpShrubland_wtd <- predict(shrubland_occu, type="state", 
+                             species="Whitetail_deer", newdata = ShrublandPrp_df)
+
+
+occ_prpShrubland_wtd$Species <- "Whitetail deer"
+occ_prpShrubland_wtd$prpShrubland <- ShrublandPrp_seq
+head(occ_prpShrubland_wtd)
+
+# mule deer
+occ_prpShrubland_md <- predict(shrubland_occu, type="state", 
+                            species="mule_deer", newdata = ShrublandPrp_df)
+
+
+occ_prpShrubland_md$Species <- "Mule Deer"
+occ_prpShrubland_md$prpShrubland <- ShrublandPrp_seq
+head(occ_prpShrubland_md)
+
+
+
+# Plotting marginal occupancy in proportion forest
+plot(occ_prpShrubland_wtd$prpShrubland, occ_prpShrubland_wtd$Predicted, type='l', ylim=c(0,1),
+     col='purple', lwd=2, xlab="Proportion Shrubland", ylab="Marginal occupancy")
+
+lines(occ_prpShrubland_md$prpShrubland, occ_prpShrubland_md$Predicted, col='orange', lwd=2)
+
+legend('topleft', col=c('purple', 'orange'), lty=1,
+       legend=c("Whitetail deer", "Mule Deer"))
+
 
