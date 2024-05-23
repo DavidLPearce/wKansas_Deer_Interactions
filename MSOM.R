@@ -1,5 +1,9 @@
+# -------------------------------------------------------
+#
+#                    Load/install Packages
+#
+# -------------------------------------------------------
 
-install.packages("wiqid")
 
 library(ggplot2)
 library(dplyr)
@@ -9,9 +13,23 @@ library(AICcmodavg)
 
 setseed(123)
 
+# -------------------------------------------------------
+#
+#                    Read In data
+#
+# -------------------------------------------------------
+
 
 # Reading in data
 ks_dat <- read.csv("./KansasCamera_data.csv") # Camera data
+
+# -------------------------------------------------------
+#
+#                   Data Wrangling
+#
+# -------------------------------------------------------
+
+
 
 # Formatting DateTime
 ks_dat$DateTime  <- as.POSIXct(ks_dat$DateTime ,  tryFormats = "%m/%d/%Y %H:%M:%OS", tz="UTC") 
