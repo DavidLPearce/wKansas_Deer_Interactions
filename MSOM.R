@@ -1695,7 +1695,7 @@ md_2occ_occu_fit24 <- occuMulti(data = deer2occ_umf,
 )
 
 # Aspect
-wtd_2occ_occu_fit25 <- occuMulti(data = deer2occ_umf,
+md_2occ_occu_fit25 <- occuMulti(data = deer2occ_umf,
                                  detformulas = c("~ scale(DaysActive)", 
                                                  "~ scale(DaysActive)"),
                                  stateformulas = c("~1",
@@ -1732,7 +1732,7 @@ md_2occ_occu_fit28 <- occuMulti(data = deer2occ_umf,
 
 
 # VRM + Slope
-wtd_2occ_occu_fit29 <- occuMulti(data = deer2occ_umf,
+md_2occ_occu_fit29 <- occuMulti(data = deer2occ_umf,
                                  detformulas = c("~ scale(DaysActive)", 
                                                  "~ scale(DaysActive)"),
                                  stateformulas = c("~1",
@@ -1751,7 +1751,7 @@ md_2occ_occu_fit30 <- occuMulti(data = deer2occ_umf,
 
 
 # Aspect + Slope
-wtd_2occ_occu_fit31 <- occuMulti(data = deer2occ_umf,
+md_2occ_occu_fit31 <- occuMulti(data = deer2occ_umf,
                                  detformulas = c("~ scale(DaysActive)", 
                                                  "~ scale(DaysActive)"),
                                  stateformulas = c("~1",
@@ -2385,6 +2385,8 @@ legend('topleft', col=c('purple', 'orange'), lty=1,
 # -------------------------------------------------------
 
 
+install.packages("lattice")
+library(lattice)
 
 occu_fit <- occuMulti(data = deer2occ_umf,
                       detformulas = c("~ scale(DaysActive)", 
@@ -2398,9 +2400,9 @@ occu_fit <- occuMulti(data = deer2occ_umf,
                                         scale(TownsDist)",
                                         "~1")) 
 
-View(site_covs)
-pred_dat <- site_covs[, c(1, 12:13, 41,42, 78, 91, 94:95 )]
-
+#View(site_covs)
+pred_dat <- site_covs[, c(1, 12:13, 41,42, 68:69, 78, 91:92, 95 )]
+head(pred_dat)
 
 
 occuPred <- predict(occu_fit,
@@ -2410,14 +2412,12 @@ occuPred <- predict(occu_fit,
                     inf.rm = TRUE)
 
 
-levelplot(Predicted ~ occuPred$x + occuPred$y,
+levelplot(Predicted ~ pred_dat$Latitude + pred_dat$Longitude, # need to extract values for new sites
           data = occuPred,
           col.regions = rev(terrain.colors(100)),
           at = seq(0,1,length.out=101))
 
 
-install.packages("lattice")
-library(lattice)
 
 
 # -------------------------------------------------------
