@@ -14,11 +14,11 @@ library(raster)
 library(terra)
 library(sp)
 library(spatialEco)
-
-
+library(progress)
 
 set.seed(123)
 options(scipen = 999)
+setwd(".")
 
 # -------------------------------------------------------
 #
@@ -246,7 +246,7 @@ names(doy_unique_data)[4] <- "Longitude"
 # landscape covariates -------------- 
 
 landscape_cov_dat <- read.csv("./occu_cov_2650.csv")
-View(landscape_cov_dat)
+#View(landscape_cov_dat)
 # combining landscape_cov_dat with det_cov 
 site_covs <- merge(landscape_cov_dat, doy_unique_data, by.x = "Site", by.y = "Site")
 
@@ -257,7 +257,7 @@ NROW(site_covs)
 site_covs$New_SiteID <- 1:NROW(site_covs)
 
 # take a look
-View(site_covs)
+#View(site_covs)
 
 # distance covariates -------------- 
 
@@ -272,101 +272,65 @@ site_covs$GrasslandNP <- site_covs$PastureNP + site_covs$CRPNP + site_covs$SGPNP
 
 
 
-# creating a df for site XY
-siteXY <- data.frame(Site = site_covs$Site,
-                     New_SiteID = site_covs$New_SiteID,
-                     Latitude = site_covs$Latitude,
-                     Longitude = site_covs$Longitude)
-
-head(siteXY)
-
 
 
 # Load digital elevation model
-dem <- raster("D:/KansasGIS/KS_DEM/KS_DEM.tif")
+dem <- rast("D:/KansasGIS/KS_DEM/KS_DEM.tif")
+
 
 # Convert siteXY to spatial points
-site_coords <- SpatialPoints(coords = siteXY[, c("Longitude", "Latitude")], proj4string = CRS("+proj=longlat +datum=WGS84"))
+site_coords <- SpatialPoints(coords = site_covs[, c("Longitude", "Latitude")], 
+                             proj4string = CRS("+proj=longlat +datum=WGS84"))
 
-# Project site coordinates to match DEM
-site_coords_projected <- spTransform(site_coords, crs(dem))
 
-# extract elevation values
-elev_values <- extract(dem, site_coords_projected)
+# Convert the coordinates to a SpatVector object
+site_pointvec <- vect(site_coords, type = "points", crs = crs(dem))
+
+# Elevation
+elev_values <- terra::extract(dem, site_pointvec)
 elev_values <- as.data.frame(elev_values)
-elev_values$Site <- siteXY$Site
+elev_values$Site <- site_covs$Site
 head(elev_values)
 
 # adding to site_covs
 site_covs$Elev <- elev_values$elev_values
 
-# Slope
-slope <- terrain(dem, opt = "slope", unit = "degrees") 
-
-# extract slope values
-slope_values <- extract(slope, site_coords_projected)
-slope_values <- as.data.frame(slope_values)
-slope_values$Site <- siteXY$Site
-head(slope_values)
-
-# adding to site_covs
-site_covs$Slope <- slope_values$slope_values
-
-# Aspect 
-aspect <- terrain(dem, opt = "aspect")
-
-# extract aspect values
-aspect_values <- extract(aspect, site_coords_projected)
-aspect_values <- as.data.frame(aspect_values)
-aspect_values$Site <- siteXY$Site
-head(aspect_values)
-
-# adding to site_covs
-site_covs$Aspect <- aspect_values$aspect_values
-
-
-# # Terrain ruggedness index
-# tri <- terrain(dem, opt = "TRI") 
-# 
-# # extract TRI values
-# tri_values <- extract(tri, site_coords_projected)
-# tri_values <- as.data.frame(tri_values)
-# tri_values$Site <- siteXY$Site
-# head(tri_values)
-# 
-# 
-# # adding to site_covs
-# site_covs$TRI <- tri_values$tri_values
-# 
-
-# Vector ruggedness measure
-dem_spat <- rast(dem) # needs to be a terra SpatRaster object
+# Have to subset dem to extract slope, aspect, TRI, and VRM
 
 # progress bar
-library(progress)
 pb <- progress_bar$new(
   format = "  Progress [:bar] :percent in :elapsed",
-  total = NROW(siteXY),    # Total number of iterations
+  total = NROW(site_covs$New_SiteID),    # Total number of iterations
   width = 60               # Width of the progress bar
 )
-
-for (site in 1:NROW(siteXY)) {
+site=1
+# loop to extract
+for (site in 1:NROW(site_covs[,'New_SiteID'])) {
   
   # Update the progress bar
   pb$tick()
   
   # subset the site
-  site_sub <- siteXY[which(siteXY[,'New_SiteID'] == site),]
+  site_sub <- site_covs[which(site_covs[,'New_SiteID'] == site),]
   
   # setting projection
   site_sub_coords <- SpatialPoints(coords = site_sub[, c("Longitude", "Latitude")], 
                                    proj4string = CRS("+proj=longlat +datum=WGS84"))
   
   # buffer the site
-  site_buffer <- buffer(site_sub_coords, width = 2000)
+  site_buffer <- terra::buffer(site_sub_coords, width = 3000)
   
   # subset DEM
-  dem_subset <- crop(dem_spat, site_buffer)
+  dem_subset <- terra::crop(dem, site_buffer)
+
+  # get slope
+  slope_sub <- terra::terrain(x = dem_subset, v = "slope", unit = "degrees")
+  
+  # get aspect
+  aspect_sub <- terra::terrain(x = dem_subset, v = "aspect")
+  
+  # get terrain ruggedness index
+  tri_sub <- terra::terrain(x = dem_subset, v = "TRI")
   
   # get vector ruggedness
   vrm_sub <- spatialEco::vrm(dem_subset, s = 3)
@@ -374,16 +338,30 @@ for (site in 1:NROW(siteXY)) {
   # Convert the coordinates to a SpatVector object
   site_pointvec <- vect(site_sub_coords, type = "points", crs = crs(dem_spat))
   
-  # extract vector ruggedness values
-  vrm_values <- extract(vrm_sub, site_pointvec)
+  # extract slope
+  slope_values <- terra::extract(slope_sub, site_pointvec)
   
-  # adding vrm_values to site_covs
+  # extract aspect
+  aspect_values <- terra::extract(aspect_sub, site_pointvec)
+  
+  # extract terrain ruggedness index
+  tri_values <- terra::extract(tri_sub, site_pointvec)
+  
+  # extract vector ruggedness values
+  vrm_values <- terra::extract(vrm_sub, site_pointvec)
+  
+  # adding  values to site_covs
+  site_covs[site,'Slope'] <- slope_values[,'slope']
+  site_covs[site,'Aspect'] <- aspect_values[,'aspect']
+  site_covs[site,'TRI'] <- tri_values[,'TRI']
   site_covs[site,'VRM'] <- vrm_values[,'lyr1']
 }
 
 # take a look
 head(site_covs)
 tail(site_covs)
+
+#View(site_covs)
 
 # -------------------------------------------------------
 #
@@ -832,10 +810,9 @@ print(md_2oc_det_model_aicc)
 # -------------------------------------------------------
 
 
-# detection model fit 7 was the most supported: scale(DaysActive) + Latitude + Longitude
 
 # Null model
-wtd_1occ_occu_fit1 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit1 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~1",
@@ -845,7 +822,7 @@ wtd_1occ_occu_fit1 <- occuMulti(data = deer2occ_umf,
 
 
 # RowcropPrp
-wtd_1occ_occu_fit2 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit2 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~scale(RowcropPrp)",
@@ -853,8 +830,18 @@ wtd_1occ_occu_fit2 <- occuMulti(data = deer2occ_umf,
                                                   "~1") 
 )
 
+# RowcropPrp + RowcropNP
+wtd_2occ_occu_fit3 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(RowcropPrp) + scale(RowcropNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
 # SandsagePrp
-wtd_1occ_occu_fit3 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit4 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~scale(SandsagePrp)",
@@ -862,9 +849,18 @@ wtd_1occ_occu_fit3 <- occuMulti(data = deer2occ_umf,
                                                   "~1") 
 )
 
+# SandsagePrp + SandsageNP
+wtd_2occ_occu_fit5 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(SandsagePrp) + scale(SandsageNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
 
 # ForestPrp
-wtd_1occ_occu_fit4 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit6 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~scale(ForestPrp)",
@@ -872,8 +868,18 @@ wtd_1occ_occu_fit4 <- occuMulti(data = deer2occ_umf,
                                                   "~1") 
 )
 
+# ForestPrp + ForestNP
+wtd_2occ_occu_fit7 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(ForestPrp) + scale(ForestNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
 # ShrublandPrp 
-wtd_1occ_occu_fit5 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit8 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~scale(ShrublandPrp)",
@@ -881,55 +887,17 @@ wtd_1occ_occu_fit5 <- occuMulti(data = deer2occ_umf,
                                                   "~1") 
 )
 
-# ShrublandPrp + ForestPrp
-wtd_1occ_occu_fit6 <- occuMulti(data = deer2occ_umf,
+# ShrublandPrp + ShrublandNP
+wtd_2occ_occu_fit9 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
-                                stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp)",
+                                stateformulas = c("~scale(ShrublandPrp) + scale(ShrublandNP)",
                                                   "~1",
                                                   "~1") 
-)
-
-# ShrublandPrp + SandsagePrp
-wtd_1occ_occu_fit7 <- occuMulti(data = deer2occ_umf,
-                                detformulas = c("~ scale(DaysActive)", 
-                                                "~ scale(DaysActive)"),
-                                stateformulas = c("~scale(ShrublandPrp) + scale(SandsagePrp)",
-                                                  "~1",
-                                                  "~1") 
-)
-
-# SandsagePrp + ForestPrp
-wtd_1occ_occu_fit8 <- occuMulti(data = deer2occ_umf,
-                                detformulas = c("~ scale(DaysActive)", 
-                                                "~ scale(DaysActive)"),
-                                stateformulas = c("~scale(SandsagePrp) + scale(ForestPrp)",
-                                                  "~1",
-                                                  "~1") 
-)
-
-# ShrublandPrp + ForestPrp + SandsagePrp
-wtd_1occ_occu_fit9 <- occuMulti(data = deer2occ_umf,
-                                detformulas = c("~ scale(DaysActive)", 
-                                                "~ scale(DaysActive)"),
-                                stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + scale(SandsagePrp)",
-                                                  "~1",
-                                                  "~1") 
-)
-
-
-
-# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
-wtd_1occ_occu_fit10 <- occuMulti(data = deer2occ_umf,
-                                 detformulas = c("~ scale(DaysActive)", 
-                                                 "~ scale(DaysActive)"),
-                                 stateformulas = c("~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
-                                                   "~1",
-                                                   "~1") 
 )
 
 # prpGrassland
-wtd_1occ_occu_fit11 <- occuMulti(data = deer2occ_umf,
+wtd_2occ_occu_fit10 <- occuMulti(data = deer2occ_umf,
                                  detformulas = c("~ scale(DaysActive)", 
                                                  "~ scale(DaysActive)"),
                                  stateformulas = c("~scale(prpGrassland)",
@@ -937,21 +905,289 @@ wtd_1occ_occu_fit11 <- occuMulti(data = deer2occ_umf,
                                                    "~1") 
 )
 
+# prpGrassland + GrasslandNP
+wtd_2occ_occu_fit11 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(prpGrassland) + scale(GrasslandNP)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# prpGrassland + scale(SandsagePrp)
+wtd_2occ_occu_fit12 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(prpGrassland) + scale(SandsagePrp)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# prpGrassland + scale(SandsagePrp) + GrasslandNP + SandsageNP
+wtd_2occ_occu_fit13 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(prpGrassland) + scale(SandsagePrp)+
+                                                   scale(GrasslandNP) + scale(SandsageNP)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+
+
+# ShrublandPrp + ForestPrp
+wtd_2occ_occu_fit14 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP)
+wtd_2occ_occu_fit15 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# ShrublandPrp + SandsagePrp
+wtd_2occ_occu_fit16 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(ShrublandPrp) + scale(SandsagePrp)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# ShrublandPrp + SandsagePrp + scale(ShrublandNP) + scale(SandsageNP)
+wtd_2occ_occu_fit17 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(ShrublandPrp) + scale(SandsagePrp) + 
+                                                  scale(ShrublandNP) + scale(SandsageNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
+# SandsagePrp + ForestPrp
+wtd_2occ_occu_fit18 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(SandsagePrp) + scale(ForestPrp)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
+
+# SandsagePrp + ForestPrp + ForestNP + SandsageNP
+wtd_2occ_occu_fit19 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(SandsagePrp) + scale(ForestPrp)+ 
+                                                  scale(ForestNP) + scale(SandsageNP)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# MajorRoadDist
+wtd_2occ_occu_fit20 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(MajorRoadDist)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# TownsDist
+wtd_2occ_occu_fit21 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(TownsDist)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# TownsDist + MajorRoadDist
+wtd_2occ_occu_fit22 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(TownsDist) + scale(MajorRoadDist)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# Slope
+wtd_2occ_occu_fit23 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(Slope)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# Aspect
+wtd_2occ_occu_fit24 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(Aspect)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# TRI
+wtd_2occ_occu_fit25 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(TRI)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# VRM
+wtd_2occ_occu_fit26 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(VRM)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# VRM + Aspect
+wtd_2occ_occu_fit27 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(VRM) + scale(Aspect)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
+# VRM + Slope
+wtd_2occ_occu_fit28 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(VRM) + scale(Slope)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+
+# Aspect + Slope
+wtd_2occ_occu_fit29 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~scale(Aspect) + scale(Slope)",
+                                                  "~1",
+                                                  "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Slope)
+wtd_2occ_occu_fit30 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                  scale(Slope)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect)
+wtd_2occ_occu_fit31 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(Aspect)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM)
+wtd_2occ_occu_fit32 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(VRM)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM) + scale(Aspect)
+wtd_2occ_occu_fit33 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                    scale(VRM) + scale(Aspect)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM) + scale(Slope)
+wtd_2occ_occu_fit34 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(VRM) + scale(Slope)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect) + scale(Slope)
+wtd_2occ_occu_fit34 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(Aspect) + scale(Slope)",
+                                                   "~1",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect) + scale(Slope) + scale(VRM)
+wtd_2occ_occu_fit35 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                  scale(Aspect) + scale(Slope) + scale(VRM)",
+                                                   "~1",
+                                                   "~1") 
+)
+
 
 
 # Creating a list of model names
-wtd_1occ_occu_model_names <- paste("wtd_1occ_occu_Fit", as.character(1:11), sep = "")
+wtd_2occ_occu_model_names <- paste("wtd_2occ_occu_Fit", as.character(1:35), sep = "")
 
 # Calculating AIC for the list of models
-wtd_1occ_occu_model_aicc <- aictab(list(wtd_1occ_occu_fit1,wtd_1occ_occu_fit2,wtd_1occ_occu_fit3,
-                                        wtd_1occ_occu_fit4,wtd_1occ_occu_fit5,wtd_1occ_occu_fit6,
-                                        wtd_1occ_occu_fit7,wtd_1occ_occu_fit8, wtd_1occ_occu_fit9,
-                                        wtd_1occ_occu_fit10, wtd_1occ_occu_fit11),
-                                   modnames = wtd_1occ_occu_model_names)
+wtd_2occ_occu_model_aicc <- aictab(list(wtd_2occ_occu_fit1, wtd_2occ_occu_fit2, wtd_2occ_occu_fit3,
+                                        wtd_2occ_occu_fit4, wtd_2occ_occu_fit5, wtd_2occ_occu_fit6,
+                                        wtd_2occ_occu_fit7, wtd_2occ_occu_fit8, wtd_2occ_occu_fit9,
+                                        wtd_2occ_occu_fit10, wtd_2occ_occu_fit11, wtd_2occ_occu_fit12,
+                                        wtd_2occ_occu_fit13, wtd_2occ_occu_fit14, wtd_2occ_occu_fit15,
+                                        wtd_2occ_occu_fit16, wtd_2occ_occu_fit17, wtd_2occ_occu_fit18,
+                                        wtd_2occ_occu_fit19, wtd_2occ_occu_fit20, wtd_2occ_occu_fit21,
+                                        wtd_2occ_occu_fit22, wtd_2occ_occu_fit23, wtd_2occ_occu_fit24,
+                                        wtd_2occ_occu_fit25, wtd_2occ_occu_fit26, wtd_2occ_occu_fit27,
+                                        wtd_2occ_occu_fit28, wtd_2occ_occu_fit29 , wtd_2occ_occu_fit30,
+                                        wtd_2occ_occu_fit31, wtd_2occ_occu_fit32, wtd_2occ_occu_fit33,
+                                        wtd_2occ_occu_fit34, wtd_2occ_occu_fit35),
+                                   modnames = wtd_2occ_occu_model_names)
 
-print(wtd_1occ_occu_model_aicc)
+print(wtd_2occ_occu_model_aicc)
 
-# Fit 4 scale(ForestPrp) was the most supported occupancy model for white tail deer
+# Fit 32 (scale(SShrublandPrp) + scale(SForestPrp) + scale(ShrublandNP) + scale(ForestNP) + scale(VRM))
+# was the best occupancy model for wtd
 
 # -------------------------------------------------------
 #
@@ -962,123 +1198,380 @@ print(wtd_1occ_occu_model_aicc)
 
 
 # Null model
-md_1occ_occu_fit1 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~1",
-                                                 "~1") 
+md_2occ_occu_fit1 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~1",
+                                                  "~1") 
 )
 
 
 # RowcropPrp
-md_1occ_occu_fit2 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(RowcropPrp)",
-                                                 "~1") 
+md_2occ_occu_fit2 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(RowcropPrp)",
+                                                  "~1") 
 )
 
+# RowcropPrp + RowcropNP
+md_2occ_occu_fit3 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(RowcropPrp) + scale(RowcropNP)",
+                                                  "~1") 
+)
+
+
 # SandsagePrp
-md_1occ_occu_fit3 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(SandsagePrp)",
-                                                 "~1") 
+md_2occ_occu_fit4 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(SandsagePrp)",
+                                                  "~1") 
+)
+
+# SandsagePrp + SandsageNP
+md_2occ_occu_fit5 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(SandsagePrp) + scale(SandsageNP)",
+                                                  "~1") 
 )
 
 
 # ForestPrp
-md_1occ_occu_fit4 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(ForestPrp)",
-                                                 "~1") 
-)
-
-# ShrublandPrp 
-md_1occ_occu_fit5 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(ShrublandPrp)",
-                                                 "~1") 
-)
-
-# ShrublandPrp + ForestPrp
-md_1occ_occu_fit6 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(ShrublandPrp) + scale(ForestPrp)",
-                                                 "~1") 
-)
-
-# ShrublandPrp + SandsagePrp
-md_1occ_occu_fit7 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(ShrublandPrp) + scale(SandsagePrp)",
-                                                 "~1") 
-)
-
-# SandsagePrp + ForestPrp
-md_1occ_occu_fit8 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(SandsagePrp) + scale(ForestPrp)",
-                                                 "~1") 
-)
-
-# ShrublandPrp + ForestPrp + SandsagePrp
-md_1occ_occu_fit9 <- occuMulti(data = deer2occ_umf,
-                               detformulas = c("~ scale(DaysActive)", 
-                                               "~ scale(DaysActive)"),
-                               stateformulas = c("~1",
-                                                 "~scale(ShrublandPrp) + scale(ForestPrp) + scale(SandsagePrp)",
-                                                 "~1") 
-)
-
-
-
-# CRPPrp + SGPPrp + MGPPrp + TGPPrp + SandsagePrp
-md_1occ_occu_fit10 <- occuMulti(data = deer2occ_umf,
+md_2occ_occu_fit6 <- occuMulti(data = deer2occ_umf,
                                 detformulas = c("~ scale(DaysActive)", 
                                                 "~ scale(DaysActive)"),
                                 stateformulas = c("~1",
-                                                  "~scale(CRPPrp) + scale(SGPPrp) + scale(MGPPrp) + scale(TGPPrp) + scale(SandsagePrp)",
+                                                  "~scale(ForestPrp)",
+                                                  "~1") 
+)
+
+# ForestPrp + ForestNP
+md_2occ_occu_fit7 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ForestPrp) + scale(ForestNP)",
+                                                  "~1") 
+)
+
+
+# ShrublandPrp 
+md_2occ_occu_fit8 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp)",
+                                                  "~1") 
+)
+
+# ShrublandPrp + ShrublandNP
+md_2occ_occu_fit9 <- occuMulti(data = deer2occ_umf,
+                                detformulas = c("~ scale(DaysActive)", 
+                                                "~ scale(DaysActive)"),
+                                stateformulas = c("~1",
+                                                  "~scale(ShrublandPrp) + scale(ShrublandNP)",
                                                   "~1") 
 )
 
 # prpGrassland
-md_1occ_occu_fit11 <- occuMulti(data = deer2occ_umf,
-                                detformulas = c("~ scale(DaysActive)", 
-                                                "~ scale(DaysActive)"),
-                                stateformulas = c("~1",
-                                                  "~scale(prpGrassland)",
-                                                  "~1") 
+md_2occ_occu_fit10 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(prpGrassland)",
+                                                   "~1") 
+)
+
+# prpGrassland + GrasslandNP
+md_2occ_occu_fit11 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(prpGrassland) + scale(GrasslandNP)",
+                                                   "~1") 
+)
+
+# prpGrassland + scale(SandsagePrp)
+md_2occ_occu_fit12 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(prpGrassland) + scale(SandsagePrp)",
+                                                   "~1") 
+)
+
+# prpGrassland + scale(SandsagePrp) + GrasslandNP + SandsageNP
+md_2occ_occu_fit13 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(prpGrassland) + scale(SandsagePrp)+
+                                                   scale(GrasslandNP) + scale(SandsageNP)",
+                                                   "~1") 
 )
 
 
+
+# ShrublandPrp + ForestPrp
+md_2occ_occu_fit14 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP)
+md_2occ_occu_fit15 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + SandsagePrp
+md_2occ_occu_fit16 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(SandsagePrp)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + SandsagePrp + scale(ShrublandNP) + scale(SandsageNP)
+md_2occ_occu_fit17 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(SandsagePrp) + 
+                                                  scale(ShrublandNP) + scale(SandsageNP)",
+                                                   "~1") 
+)
+
+
+# SandsagePrp + ForestPrp
+md_2occ_occu_fit18 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(SandsagePrp) + scale(ForestPrp)",
+                                                   "~1") 
+)
+
+
+
+# SandsagePrp + ForestPrp + ForestNP + SandsageNP
+md_2occ_occu_fit19 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(SandsagePrp) + scale(ForestPrp)+ 
+                                                  scale(ForestNP) + scale(SandsageNP)",
+                                                   "~1") 
+)
+
+# MajorRoadDist
+md_2occ_occu_fit20 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(MajorRoadDist)",
+                                                   "~1") 
+)
+
+# TownsDist
+md_2occ_occu_fit21 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(TownsDist)",
+                                                   "~1") 
+)
+
+# TownsDist + MajorRoadDist
+md_2occ_occu_fit22 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(TownsDist) + scale(MajorRoadDist)",
+                                                   "~1") 
+)
+
+# Slope
+md_2occ_occu_fit23 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(Slope)",
+                                                   "~1") 
+)
+
+# Aspect
+md_2occ_occu_fit24 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(Aspect)",
+                                                   "~1") 
+)
+
+# TRI
+md_2occ_occu_fit25 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(TRI)",
+                                                   "~1") 
+)
+
+# VRM
+md_2occ_occu_fit26 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(VRM)",
+                                                   "~1") 
+)
+
+# VRM + Aspect
+md_2occ_occu_fit27 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(VRM) + scale(Aspect)",
+                                                   "~1") 
+)
+
+
+# VRM + Slope
+md_2occ_occu_fit28 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(VRM) + scale(Slope)",
+                                                   "~1") 
+)
+
+
+# Aspect + Slope
+md_2occ_occu_fit29 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(Aspect) + scale(Slope)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Slope)
+md_2occ_occu_fit30 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                  scale(Slope)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect)
+md_2occ_occu_fit31 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(Aspect)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM)
+md_2occ_occu_fit32 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(VRM)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM) + scale(Aspect)
+md_2occ_occu_fit33 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                    scale(VRM) + scale(Aspect)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(VRM) + scale(Slope)
+md_2occ_occu_fit34 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(VRM) + scale(Slope)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect) + scale(Slope)
+md_2occ_occu_fit34 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                   scale(Aspect) + scale(Slope)",
+                                                   "~1") 
+)
+
+# ShrublandPrp + ForestPrp + scale(ShrublandNP) + scale(ForestNP) + scale(Aspect) + scale(Slope) + scale(VRM)
+md_2occ_occu_fit35 <- occuMulti(data = deer2occ_umf,
+                                 detformulas = c("~ scale(DaysActive)", 
+                                                 "~ scale(DaysActive)"),
+                                 stateformulas = c("~1",
+                                                   "~scale(ShrublandPrp) + scale(ForestPrp) + 
+                                                  scale(ShrublandNP) + scale(ForestNP) +
+                                                  scale(Aspect) + scale(Slope) + scale(VRM)",
+                                                   "~1") 
+)
+
+
+
 # Creating a list of model names
-md_1occ_occu_model_names <- paste("md_1occ_occu_Fit", as.character(1:11), sep = "")
+md_2occ_occu_model_names <- paste("md_2occ_occu_Fit", as.character(1:35), sep = "")
 
 # Calculating AIC for the list of models
-md_1occ_occu_model_aicc <- aictab(list(md_1occ_occu_fit1, md_1occ_occu_fit2, md_1occ_occu_fit3,
-                                       md_1occ_occu_fit4, md_1occ_occu_fit5, md_1occ_occu_fit6, 
-                                       md_1occ_occu_fit7, md_1occ_occu_fit8, md_1occ_occu_fit9,
-                                       md_1occ_occu_fit10, md_1occ_occu_fit11),
-                                  modnames = md_1occ_occu_model_names)
+md_2occ_occu_model_aicc <- aictab(list(md_2occ_occu_fit1, md_2occ_occu_fit2, md_2occ_occu_fit3,
+                                       md_2occ_occu_fit4, md_2occ_occu_fit5, md_2occ_occu_fit6,
+                                       md_2occ_occu_fit7, md_2occ_occu_fit8, md_2occ_occu_fit9,
+                                       md_2occ_occu_fit10, md_2occ_occu_fit11, md_2occ_occu_fit12,
+                                       md_2occ_occu_fit13, md_2occ_occu_fit14, md_2occ_occu_fit15,
+                                       md_2occ_occu_fit16, md_2occ_occu_fit17, md_2occ_occu_fit18,
+                                       md_2occ_occu_fit19, md_2occ_occu_fit20, md_2occ_occu_fit21,
+                                       md_2occ_occu_fit22, md_2occ_occu_fit23, md_2occ_occu_fit24,
+                                       md_2occ_occu_fit25, md_2occ_occu_fit26, md_2occ_occu_fit27,
+                                       md_2occ_occu_fit28, md_2occ_occu_fit29 , md_2occ_occu_fit30,
+                                       md_2occ_occu_fit31, md_2occ_occu_fit32, md_2occ_occu_fit33,
+                                       md_2occ_occu_fit34, md_2occ_occu_fit35),
+                                   modnames = md_2occ_occu_model_names)
 
-print(md_1occ_occu_model_aicc)
+print(md_2occ_occu_model_aicc)
 
-# fit 5 scale(ShrublandPrp) was the best occupancy model for mule deer
-# with the second most supported being fit 6 scale(ShrublandPrp) + scale(ForestPrp)
 
 # -------------------------------------------------------
 #
