@@ -86,9 +86,11 @@ kansas_map
 # plots of all sites
 ggplot() +
   geom_sf(data = KSextent, fill = "transparent", color = "black") + 
-  geom_point(data = deer_occurrences, aes(x = Longitude, y = Latitude), size = 3)
-
-
+  geom_point(data = deer_occurrences, aes(x = Longitude, y = Latitude), size = 3) +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA)  
+  )
 
 # plots of sites with just White-Tailed Deer
 wtd_plot <- subset(deer_occurrences, Deer_Occurrence == "White-Tailed Deer")
@@ -96,36 +98,50 @@ NROW(wtd_plot)
 
 ggplot() +
   geom_sf(data = KSextent, fill = "transparent", color = "black") + 
-  geom_point(data = wtd_plot, aes(x = Longitude, y = Latitude), size = 3, color = "purple")
+  geom_point(data = wtd_plot, aes(x = Longitude, y = Latitude), size = 3, color = "purple") +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA)
+  )
 
-
+ 
 # plots of sites with just mule deer
 md_plot <- subset(deer_occurrences, Deer_Occurrence == "Mule Deer")
 NROW(md_plot)
 
 ggplot() +
   geom_sf(data = KSextent, fill = "transparent", color = "black") + 
-  geom_point(data = md_plot, aes(x = Longitude, y = Latitude), size = 3, color = "orange")
+  geom_point(data = md_plot, aes(x = Longitude, y = Latitude), size = 3, color = "orange") +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
 
 
 # plots of sites with both
 both_plot <- subset(deer_occurrences, Deer_Occurrence == "Both")
 NROW(both_plot)
-
 ggplot() +
   geom_sf(data = KSextent, fill = "transparent", color = "black") + 
-  geom_point(data = both_plot, aes(x = Longitude, y = Latitude), size = 3, color = "blue")
+  geom_point(data = both_plot, aes(x = Longitude, y = Latitude), size = 3, color = "blue")  +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA)
+  )
 
 
 
 # plots of sites with neither
 neither_plot <- subset(deer_occurrences, Deer_Occurrence == "Neither")
 NROW(neither_plot)
-
 ggplot() +
   geom_sf(data = KSextent, fill = "transparent", color = "black") + 
-  geom_point(data = neither_plot, aes(x = Longitude, y = Latitude), size = 3, color = "black")
-
+  geom_point(data = neither_plot, aes(x = Longitude, y = Latitude), size = 3, color = "red")  +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA)
+  )
 
 
 
@@ -133,16 +149,18 @@ ggplot() +
 
 # Plotting based on Deer_Occurrence conditions
 ggplot() +
-  geom_sf(data = KSextent, fill = "transparent", color = "black") +  
-  geom_point(data = deer_occurrences, aes(x = Longitude, y = Latitude, color = Deer_Occurrence), size = 3) +
-  labs(x = "Longitude", y = "Latitude") +
-  scale_color_manual(values = c("White-Tailed Deer" = "purple",
-                                "Mule Deer" = "orange",
-                                "Both" = "blue",
-                                "Neither" = "black")) +
-  theme_minimal()
-
-
-
-
-
+  geom_sf(data = KSextent, fill = "transparent", color = "black") + 
+  geom_point(data = deer_occurrences, aes(x = Longitude, y = Latitude, color = Deer_Occurrence), size = 3)  +
+  scale_color_manual(
+    values = c("White-Tailed Deer" = "purple",
+               "Mule Deer" = "orange",
+               "Both" = "blue",
+               "Neither" = "red"),
+    name = "Deer\nOccurrence"  # Adding legend label
+  ) +
+  theme_void() +  
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",  # Keep legend on the right
+    legend.margin = margin(r = 7)  # Shift legend slightly to the left
+  )
