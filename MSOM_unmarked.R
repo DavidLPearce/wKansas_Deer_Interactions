@@ -17,7 +17,6 @@ library(sp)
 library(spatialEco)
 library(progress)
 library(psych)
-library(lattice)
 
 set.seed(123)
 options(scipen = 9999)
@@ -33,6 +32,7 @@ setwd(".")
 # Reading in data
 ks_dat <- read.csv("./KansasCamera_data.csv") # Camera data
 
+
 # -------------------------------------------------------
 #
 #                   Data Wrangling
@@ -43,7 +43,7 @@ ks_dat <- read.csv("./KansasCamera_data.csv") # Camera data
 
 # Formatting DateTime
 ks_dat$DateTime  <- as.POSIXct(ks_dat$DateTime ,  tryFormats = "%m/%d/%Y %H:%M:%OS", tz="UTC") 
-
+max(ks_dat$DateTime)
 
 # Adding a column based on year for survey 
 ks_dat$Survey <- ifelse(ks_dat$Year == "2018", 1,
@@ -121,6 +121,7 @@ for (site in 1:length(unique(wtd_dat$New_SiteID))){
 # Take a look
 print(wtd_det_mat)
 
+write.csv(wtd_det_mat, "wtd_det_mat.csv")
 
 
 ## ------------------ Mule Deer -------------------------------------
@@ -378,6 +379,11 @@ head(covs)
 covs <- covs %>%
   mutate_all(~coalesce(., 0))
 
+# take a look
+head(covs)
+
+NROW(unique(colnames(covs)))
+
 # -------------------------------------------------------
 #
 #                     Unmarked frame 
@@ -584,9 +590,9 @@ plot_data <- data.frame(
 
 # Plot the cumulative detection probabilities
 ggplot(plot_data, aes(x = Day)) +
-  geom_line(aes(y = Cumulative_wTD, color = "Whitetail Deer"), linewidth = 1) +
-  geom_line(aes(y = Cumulative_MD, color = "Mule Deer"), linewidth = 1) +
-  labs(y = "Cumulative Detection Probability", title = "") +
+  geom_smooth(aes(y = Cumulative_wTD, color = "Whitetail Deer"), method = "loess", se = FALSE, linewidth = 1) +
+  geom_smooth(aes(y = Cumulative_MD, color = "Mule Deer"), method = "loess", se = FALSE, linewidth = 1) +
+  labs(y = "Cumulative Detection Probability\n", x = "\n Survey Day", title = "") +
   scale_color_manual(name = "Legend", values = c("Whitetail Deer" = "purple", "Mule Deer" = "orange")) +
   scale_x_continuous(breaks = 1:n_days) + 
   theme_minimal() +
@@ -596,6 +602,23 @@ ggplot(plot_data, aes(x = Day)) +
     panel.background = element_rect(fill = "white", color = NA), 
     plot.background = element_rect(fill = "white", color = NA) 
   )
+
+# Line at day 14
+ggplot(plot_data, aes(x = Day)) +
+  geom_smooth(aes(y = Cumulative_wTD, color = "Whitetail Deer"), method = "loess", se = FALSE, linewidth = 1) +
+  geom_smooth(aes(y = Cumulative_MD, color = "Mule Deer"), method = "loess", se = FALSE, linewidth = 1) +
+  geom_vline(xintercept = 14, linetype = "dashed", color = "Black", linewidth = 1) +
+  labs(y = "Cumulative Detection Probability\n", x = "\n Survey Day", title = "") +
+  scale_color_manual(name = "Legend", values = c("Whitetail Deer" = "purple", "Mule Deer" = "orange")) +
+  scale_x_continuous(breaks = 1:n_days) + 
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_rect(fill = "white", color = NA), 
+    plot.background = element_rect(fill = "white", color = NA) 
+  )
+
 
 # -------------------------------------------------------
 #
@@ -665,6 +688,17 @@ pairs.panels(covs[c(14:15, 23:27, 43:44, 52:56)],
              bg = c("blue", "red"),
              pch = 21, main = "")
 
+plot(covs[,c(19, 48)]) # Forest
+pairs.panels(covs[c(19, 48)],
+             gap = 0,
+             bg = c("blue", "red"),
+             pch = 21, main = "")
+
+plot(covs[,c(25, 54)]) # mixed grass
+pairs.panels(covs[c(25, 54)],
+             gap = 0,
+             bg = c("blue", "red"),
+             pch = 21, main = "")
 
 # FallowPrp BarrenPrp
 # FallowNP BarrenNP
@@ -704,7 +738,7 @@ pairs.panels(covs[c(75:85)],
 # road density is correlated with irrigationpivot density
 
 # Elev    Slope   Aspect       TRI           VR
-pairs.panels(covs[c(94:98)],
+pairs.panels(covs[c(94:96, 98)],
              gap = 0,
              bg = c("blue", "red"),
              pch = 21, main = "")
@@ -1133,7 +1167,7 @@ print(md_2occ_occu_model_aicc)
 # -------------------------------------------------------
 
 # fitting a occupancy model that was the 'best' for both species
-occu_fit <- occuMulti(data = deer2occ_umf,
+best_occu_fit <- occuMulti(data = deer2occ_umf,
                       detformulas = c("~ scale(DaysActive) + scale(VegHeight)", 
                                       "~ scale(DaysActive)"),
                       
@@ -1144,6 +1178,94 @@ occu_fit <- occuMulti(data = deer2occ_umf,
                                         scale(MGPPrp) + scale(Aspect) + 
                                         scale(BarrenPrp) + scale(PasturePrp)",
                                         "~1")) 
+
+# for beta estimate plot
+occu_fit <- occuMulti(data = deer2occ_umf,
+                      detformulas = c("~ scale(DaysActive) + scale(VegHeight)", 
+                                      "~ scale(DaysActive)"),
+                      
+                      stateformulas = c("~scale(ForestPrp) + scale(BarrenPrp) + 
+                                        scale(Slope) + scale(Elev) + scale(MGPPrp)+ 
+                                        scale(Aspect) + scale(ShrublandPrp) + 
+                                        scale(StreamsDist) + scale(PasturePrp)",
+                                        
+                                        "~scale(ShrublandPrp) + scale(StreamsDist) + 
+                                        scale(MGPPrp) + scale(Aspect) + 
+                                        scale(BarrenPrp) + scale(PasturePrp) + 
+                                        scale(ForestPrp) + 
+                                        scale(Slope) + scale(Elev)",
+                                        "~1"))
+
+
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Extract occupancy estimates and SEs from the occu_fit object
+occupancy_estimates <- summary(occu_fit)$state
+
+# Combine occupancy estimates into one data frame
+occupancy_estimates <- data.frame(
+  Estimate = occupancy_estimates$Estimate,
+  SE = occupancy_estimates$SE,
+  z = occupancy_estimates$z,
+  P_value = occupancy_estimates$`P(>|z|)`,
+  Parameter = rownames(occupancy_estimates)
+)
+
+# Add confidence intervals
+occupancy_estimates <- occupancy_estimates %>%
+  mutate(
+    CI_Lower = Estimate - 1.96 * SE,
+    CI_Upper = Estimate + 1.96 * SE
+  )
+
+# Filter out the intercept
+occupancy_estimates <- occupancy_estimates %>%
+  filter(!grepl("Intercept", Parameter))
+
+# Separate estimates for mule deer and white-tail deer, and rename parameters
+white_tail_estimates <- occupancy_estimates %>%
+  filter(grepl("Whitetail_deer", Parameter) & !grepl("Whitetail_deer:mule_deer", Parameter)) %>%
+  mutate(Species = "Whitetail deer")
+
+mule_deer_estimates <- occupancy_estimates %>%
+  filter(grepl("mule_deer", Parameter) & !grepl("Whitetail_deer:mule_deer", Parameter)) %>%
+  mutate(Species = "Mule deer")
+
+# Extract the parameter names without species and "scale()"
+white_tail_estimates$Parameter <- gsub("\\[Whitetail_deer\\] scale\\(", "", white_tail_estimates$Parameter)
+white_tail_estimates$Parameter <- gsub("\\)", "", white_tail_estimates$Parameter)
+mule_deer_estimates$Parameter <- gsub("\\[mule_deer\\] scale\\(", "", mule_deer_estimates$Parameter)
+mule_deer_estimates$Parameter <- gsub("\\)", "", mule_deer_estimates$Parameter)
+
+# Combine estimates for plotting
+combined_estimates <- rbind(white_tail_estimates, mule_deer_estimates)
+
+# Plot the occupancy estimates using ggplot2 with custom colors and a horizontal line at 0
+ggplot(combined_estimates, aes(x = Parameter, y = Estimate, color = Species)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), 
+                position = position_dodge(width = 0.5), width = 0.2) +
+  coord_flip() + # Flip coordinates for better readability
+  theme_minimal() +
+  scale_color_manual(values = c("Whitetail deer" = "purple", "Mule deer" = "orange")) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + # Add a horizontal line at 0
+  labs(title = "Occupancy Beta Estimates and 95% CI",
+       x = "Parameter",
+       y = "Estimate") +
+  theme(axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),
+        legend.position = "right",  # Keep legend on the right
+        legend.margin = margin(r = 20))  # Remove minor gridlines
+
+
+
+ 
 
 # -------------------------------------------------------
 #
@@ -1174,7 +1296,21 @@ for (i in 1:2){
   segments(i-top, wtd_cond_data$upper[i], i+top)
 }
 
-
+# Plotting
+ggplot(wtd_cond_data, aes(x = md_status, y = Predicted)) +
+  geom_point(size = 3, shape = 19, color = "purple") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.1, color = "purple") +
+  ylim(0, 1) +
+  xlab("\nMule Deer status") +
+  ylab("Whitetail Deer Conditional Occupancy \n") +
+  ggtitle("") +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),
+        legend.position = "none")  # Remove minor gridlines
 
 # md
 md_wtd <- predict(occu_fit, type="state", species="mule_deer", cond="Whitetail_deer")
@@ -1183,19 +1319,35 @@ md_no_wtd <- predict(occu_fit, type="state", species="mule_deer", cond="-Whiteta
 md_cond_data <- rbind(md_wtd[1,], md_no_wtd[1,])
 md_cond_data$wtd_status <- c("Present","Absent")
 
+# 
+# plot(1:2, md_cond_data$Predicted, ylim=c(0,1), 
+#      xlim=c(0.5, 2.5), pch=19, cex=1.5, xaxt='n', 
+#      xlab="Whitetail Deer status", ylab="Mule Deer occupancy and 95% CI")
+# axis(1, at=1:2, labels=md_cond_data$wtd_status)
+# 
+# # CIs
+# top <- 0.1
+# for (i in 1:2){
+#   segments(i, md_cond_data$lower[i], i, md_cond_data$upper[i])
+#   segments(i-top, md_cond_data$lower[i], i+top)
+#   segments(i-top, md_cond_data$upper[i], i+top)
+# }
 
-plot(1:2, md_cond_data$Predicted, ylim=c(0,1), 
-     xlim=c(0.5, 2.5), pch=19, cex=1.5, xaxt='n', 
-     xlab="Whitetail Deer status", ylab="Mule Deer occupancy and 95% CI")
-axis(1, at=1:2, labels=md_cond_data$wtd_status)
-
-# CIs
-top <- 0.1
-for (i in 1:2){
-  segments(i, md_cond_data$lower[i], i, md_cond_data$upper[i])
-  segments(i-top, md_cond_data$lower[i], i+top)
-  segments(i-top, md_cond_data$upper[i], i+top)
-}
+# Plotting
+ggplot(md_cond_data, aes(x = wtd_status, y = Predicted)) +
+  geom_point(size = 3, shape = 19, color = "orange") +
+  geom_errorbar(aes(ymin = lower, ymax = upper, color = "orange"), width = 0.1) +
+  ylim(0, 1) +
+  xlab("\nWhitetail Deer status") +
+  ylab("Mule Deer Conditional Occupancy \n") +
+  ggtitle("") +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),
+        legend.position = "none")  # Remove minor gridlines
 
 # -------------------------------------------------------
 #
@@ -1636,151 +1788,4 @@ legend('topleft', col=c('purple', 'orange'), lty=1,
        legend=c("Whitetail deer", "Mule Deer"))
 
 
-
-
-
-# -------------------------------------------------------
-#
-#                       Predict 
-#
-# -------------------------------------------------------
-
-
-install.packages("lattice")
-library(lattice)
-
-# best occu model
-occu_fit <- occuMulti(data = deer2occ_umf,
-                      detformulas = c("~ scale(DaysActive) + scale(VegHeight)", 
-                                      "~ scale(DaysActive)"),
-                      
-                      stateformulas = c("~scale(ForestPrp) + scale(BarrenPrp) + 
-                                        scale(Slope) + scale(Elev) + scale(MGPPrp)",
-                                        
-                                        "~scale(ShrublandPrp) + scale(StreamsDist) + 
-                                        scale(MGPPrp) + scale(Aspect) + 
-                                        scale(BarrenPrp) + scale(PasturePrp)",
-                                        "~1")) 
-
-# dont have stream distance
-occu_fit <- occuMulti(data = deer2occ_umf,
-                      detformulas = c("~ scale(DaysActive) + scale(VegHeight)", 
-                                      "~ scale(DaysActive)"),
-                      
-                      stateformulas = c("~scale(ForestPrp) + 
-                                        scale(MGPPrp)+ scale(BarrenPrp) + 
-                                        scale(Slope) + scale(Elev) + scale(MGPPrp)",
-                                        
-                                        "~scale(ShrublandPrp) + 
-                                        scale(MGPPrp)+ scale(Aspect) +
-                                        scale(BarrenPrp) + scale(PasturePrp)",
-                                        "~1")) 
-
-
-###########################
-
-predict_dat <- readRDS("./predict_data.rds")
-View(predict_dat)
-
-
-########################
-
-occuPred <- predict(occu_fit,
-                    type = "state",
-                    newdata = predict_dat,
-                    na.rm = TRUE,
-                    inf.rm = TRUE)
-
-head(occuPred$Predicted)
-
-levelplot(Predicted ~ predict_dat$x + predict_dat$y, 
-          data = occuPred,
-          col.regions = rev(rainbow(100)),
-          at = seq(0,1,length.out=101))
-
-?levelplot
-
-########################
-lndcvr <- rast("D:/KansasGIS/KS_ArcProj/kansasraster.tif")
-
-# continuous to discrete
-lndcvr <- as.factor(lndcvr)
-
-lndcvr_df <- as.data.frame(lndcvr, xy=TRUE)
-
-# The mapping vector
-land_cover_mapping <- c(
-  "1" = "RowcropPrp",
-  "2" = "FallowPrp",
-  "3" = "WaterPrp",
-  "4" = "DevelopedPrp",
-  "5" = "BarrenPrp",
-  "6" = "ForestPrp",
-  "7" = "ShrublandPrp",
-  "8" = "PasturePrp",
-  "9" = "WetlandsPrp",
-  "10" = "CRPPrp",
-  "11" = "ShortgrassPrp",
-  "12" = "MixedgrassPrp",
-  "13" = "TallgrassPrp",
-  "14" = "SandsagePrp"
-)
-
-# Recode the kansasraster column
-lndcvr_df$kansasraster <- land_cover_mapping[as.character(lndcvr_df$kansasraster)]
-head(lndcvr_df)
-
-
-# Create a DataFrame with columns for each land cover type and fill with 0 or 1
-# Add binary columns based on unique values in the kansasraster column
-lndcvr_df <- lndcvr_df %>%
-  mutate(across(everything(), as.character)) %>%
-  mutate(id = row_number()) %>%
-  pivot_wider(names_from = kansasraster, values_from = kansasraster, 
-              values_fill = list(kansasraster = "0")) %>%
-  mutate(across(-c(id, x, y), ~ ifelse(. != "0", 1, 0))) %>%
-  select(-id)
-
-
-
-# Add missing land cover columns (if any) and fill with 0
-all_land_covers <- c("RowcropPrP", "FallowPrP", "WaterPrP", 
-                     "DevelopedPrP", "BarrenPrP", "ForestPrP", 
-                     "ShrublandPrP", "PasturePrP", "WetlandsPrP", 
-                     "CRPPrP", "ShortgrassPrP", "MixedgrassPrP", 
-                     "TallgrassPrP", "SandsagePrP")
-missing_cols <- setdiff(all_land_covers, names(lndcvr_df))
-for (col in missing_cols) {
-  lndcvr_df[[col]] <- 0
-}
-
-
-
-
-wtd_umf <- unmarkedFrameOccu(y = wtd_det_mat_1occ,
-                     siteCovs = covs) 
-
-wtd_fit <- occu(data = wtd_umf,
-                formula = ~ scale(DaysActive) + scale(VegHeight)
-                
-                          ~ scale(ForestPrp) + scale(MGPPrp),
-                            
-                
-                            method = "BFGS",
-                            control = list(maxit = 10000),
-                            engine = "C")
-
-?occu
-
-wtd_occuPred <- predict(wtd_fit,
-                    type = "state",
-                    newdata = lndcvr_df,
-                    na.rm = TRUE,
-                    inf.rm = TRUE,
-                    )
-
-levelplot(Predicted ~ predict_dat$x + predict_dat$y, 
-          data = occuPred,
-          col.regions = rev(terrain.colors(100)),
-          at = seq(0,1,length.out=101))
 
